@@ -1,0 +1,60 @@
+version: 2
+references:
+  centos7_container_config: &centos7_container_config
+    docker:
+      - image: centos:7
+  centos6_container_config: &centos6_container_config
+    docker:
+      - image: centos:6
+  centos_steps_mod_mruby: &centos_steps_mod_mruby
+    steps:
+      - run:
+          name: Install packages
+          command: yum -y install rpm-build rpmdevtools yum-utils ruby ruby-devel rake rubygems openssl-devel policycoreutils-python pcre-devel apr apr-devel apr-util apr-util-devel apr-devel && yum -y groupinstall "Development Tools"
+      - run:
+          name: Install ius
+          command: curl -s https://setup.ius.io/ | bash
+      - run:
+          name: Replace Git
+          command: yum -y remove git && yum -y install git2u
+      - run:
+          name: Replace Ruby
+          command: |
+            str=`cat /etc/redhat-release`
+            if [[  $str =~ release.6  ]]; then
+              yum -y remove ruby ruby-devel rake rubygems && yum -y install https://github.com/feedforce/ruby-rpm/releases/download/2.4.3/ruby-2.4.3-1.el6.x86_64.rpm
+            fi
+      - run:
+          name: Install jq
+          command: curl -L http://stedolan.github.io/jq/download/linux64/jq -o /usr/local/bin/jq && chmod +x /usr/local/bin/jq
+      - checkout
+      - run:
+          name: Install package_cloud
+          command: gem install package_cloud
+      - run:
+          name: Build and release mod_mruby
+          command: rake rpm:mod_mruby:all
+jobs:
+  build_mod_mruby_centos7:
+    <<: *centos7_container_config
+    <<: *centos_steps_mod_mruby
+  build_mod_mruby_centos6:
+    <<: *centos6_container_config
+    <<: *centos_steps_mod_mruby
+
+workflows:
+  version: 2
+  build_and_test:
+    jobs:
+      - build_mod_mruby_centos7
+      - build_mod_mruby_centos6
+  scheduled-workflow:
+    triggers:
+      - schedule:
+          cron: "0 1 * * *"
+          filters:
+            branches:
+              only: master
+    jobs:
+      - build_mod_mruby_centos7
+      - build_mod_mruby_centos6

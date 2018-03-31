@@ -1,0 +1,59 @@
+%define name mod_mruby
+%define httpd_version <%= ENV['HTTPD_VERSION'] %>
+%define mod_mruby_version <%= ENV['MOD_MRUBY_VERSION'] %>
+%define release <%= ENV['HTTPD_RELEASE'] %>
+%define version %{mod_mruby_version}.httpd%{httpd_version}
+%define buildroot %{_tmppath}/%{name}-%{version}-buildroot
+%define moduledir %{buildroot}/etc/httpd/modules
+
+BuildRoot: %{buildroot}
+Summary: Embedded mruby script language for Apache module
+License: MIT
+Packager: "Ken'ichiro OYAMA"
+Name: %{name}
+Version: %{version}
+Release: %{release}
+Prefix: %{_prefix}
+Group: System Environment/Daemons
+Requires: httpd >= %{httpd_version}, policycoreutils-python
+BuildRequires: git
+Source0: https://github.com/matsumotory/mod_mruby/archive/v%{mod_mruby_version}.tar.gz
+Source1: https://archive.apache.org/dist/httpd/httpd-%{httpd_version}.tar.gz
+
+%description
+Embedded mruby script language for Apache module
+
+%prep
+%setup -q -b 1 -n mod_mruby-%{mod_mruby_version}
+
+%build
+cd ../httpd-%{httpd_version}
+./configure
+make
+make install
+cd ../mod_mruby-%{mod_mruby_version}
+HTTPD_VERSION=%{httpd_version}
+APXS_PATH_ENV="--with-apxs=/usr/local/apache2/bin/apxs" APACHECTL_PATH_ENV="--with-apachectl=/usr/local/apache2/bin/apachectl" sh build.sh
+make
+
+%install
+rm -rf %{buildroot}
+mkdir -p %{moduledir}
+cp src/.libs/mod_mruby.so %{moduledir}/
+restorecon -R -v %{moduledir}/mod_mruby.so
+
+%clean
+[ "%{buildroot}" != "/" ] && rm -rf %{buildroot}
+
+%files
+%defattr(-, root, root)
+/etc/httpd/modules/mod_mruby.so
+
+%post
+semanage fcontext -a -t httpd_modules_t /etc/httpd/modules/mod_mruby.so 2>/dev/null || :
+restorecon -R -v /etc/httpd/modules/mod_mruby.so || :
+
+%postun
+if [ $1 -eq 0 ] ; then
+  semanage fcontext -d -t httpd_modules_t /etc/httpd/modules/mod_mruby.so 2>/dev/null || :
+fi
